@@ -1,5 +1,5 @@
 //
-//  File.swift
+//  MicrophoneRecordingViewModel.swift
 //
 //
 //  Created by Leonard Pries on 22.08.24.
@@ -68,9 +68,10 @@ import SoundAnalysis
     
     public func stopRecording() {
         print("🎙️ stop analyze")
-        if let url = audioStorage.audioFile?.url {
+        let url = audioStorage.finishRecording()
+        audioStreamManager.stop()
+        if let url {
             print("URL: \(url)")
-            audioStreamManager.stop()
             afterSave(url)
         }
         stopTimer()
@@ -78,9 +79,10 @@ import SoundAnalysis
     
     public func restart() {
         print("🎙️ stop analyze")
-        if let url = audioStorage.audioFile?.url {
+        let url = audioStorage.finishRecording()
+        audioStreamManager.stop()
+        if let url {
             print("URL: \(url)")
-            audioStreamManager.stop()
             afterSave(url)
         }
         startRecording()

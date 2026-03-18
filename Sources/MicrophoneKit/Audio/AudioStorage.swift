@@ -16,6 +16,7 @@ final public class AudioStorage {
 
     func setupAudioStorage(audioStream: AnyPublisher<AudioData, AudioManagerError>, output: URL) throws {
         cancellable = audioStream
+            .receive(on: DispatchQueue.main)
             .sink(receiveCompletion: { _ in
                 self.audioFile = nil
             }, receiveValue: { audioData in
@@ -23,7 +24,18 @@ final public class AudioStorage {
             })
     }
 
+    /// Stops recording, closes the file, and returns its URL. Call this before stopping the stream
+    /// so the WAV file is fully written and finalized before the URL is used.
+    func finishRecording() -> URL? {
+        cancellable?.cancel()
+        cancellable = nil
+        let url = audioFile?.url
+        audioFile = nil
+        return url
+    }
+
     func writePCMBuffer(buffer: AVAudioPCMBuffer, output: URL) throws {
+        guard buffer.frameLength > 0 else { return }
         do {
             if audioFile == nil {
                 let adjustedUrl = adjustedURLForFormat(output: output, formatID: buffer.format.settings[AVFormatIDKey] as? UInt32)
@@ -52,14 +64,18 @@ final public class AudioStorage {
         }
 
     private func openAudioFile(buffer: AVAudioPCMBuffer, output: URL) throws -> AVAudioFile {
+        let formatID = buffer.format.settings[AVFormatIDKey] as? UInt32 ?? kAudioFormatLinearPCM
+        let isFloat = formatID == kAudioFormatLinearPCM && (buffer.format.settings[AVLinearPCMIsFloatKey] as? Bool == true)
+        let bitDepth = buffer.format.settings[AVLinearPCMBitDepthKey] as? Int ?? (isFloat ? 32 : 16)
         let settings: [String: Any] = [
-            AVFormatIDKey: buffer.format.settings[AVFormatIDKey] ?? kAudioFormatLinearPCM,
+            AVFormatIDKey: formatID,
             AVNumberOfChannelsKey: buffer.format.settings[AVNumberOfChannelsKey] ?? 1,
             AVSampleRateKey: buffer.format.settings[AVSampleRateKey] ?? 44100,
-            AVLinearPCMBitDepthKey: buffer.format.settings[AVLinearPCMBitDepthKey] ?? 16
+            AVLinearPCMBitDepthKey: bitDepth,
+            AVLinearPCMIsFloatKey: isFloat
         ]
         do {
-            let audioFile = try AVAudioFile(forWriting: output, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let audioFile = try AVAudioFile(forWriting: output, settings: settings, commonFormat: buffer.format.commonFormat, interleaved: buffer.format.isInterleaved)
             self.audioFile = audioFile
             return audioFile
         } catch {
